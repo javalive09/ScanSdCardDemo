@@ -29,7 +29,7 @@ public class MainActivity extends Activity implements View.OnClickListener{
 
                 @Override
                 public void run() {
-                    new ScanFileTypeList().startScan(sdPath, new Handler(Looper.getMainLooper()) {
+                    new ScanMusicFile().startScan(sdPath, new Handler(Looper.getMainLooper()) {
                         @Override
                         public void handleMessage(Message msg) {
                             super.handleMessage(msg);

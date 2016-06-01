@@ -13,19 +13,19 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class ScanFileTypeList {
-    private static final String TAG = "scanMusic";
+public class ScanMusicFile {
+    private static final String TAG = "ScanMusicFile";
     private static final Pattern mPattern = Pattern.compile("([^\\.]*)\\.([^\\.]*)");
-    private ExecutorService service;
-    private ConcurrentHashMap<String, String> filterFiles_music = new ConcurrentHashMap<String, String>(1280);
+    private ExecutorService service = Executors.newFixedThreadPool(128);
+    private ConcurrentHashMap<String, String> filterFiles_music = new ConcurrentHashMap<String, String>(1024);
     private final AtomicLong counter = new AtomicLong();
+    private long startTime;
 
     private void scanDir(final String path) {
         counter.incrementAndGet();
         service.execute(new Runnable() {
             @Override
             public void run() {
-//                Log.i(TAG, "Scan Path -> " + path);
                 scanFile(path);
             }
         });
@@ -79,10 +79,8 @@ public class ScanFileTypeList {
         return false;
     }
 
-    long startTime;
     public void startScan(String path, Handler handler) {
         startTime = System.currentTimeMillis();
-        service = Executors.newFixedThreadPool(128);
         try {
             scanDir(path);
             while (counter.get() > 0) {
