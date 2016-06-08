@@ -1,9 +1,12 @@
 package peter.util.scandemo;
 
+import android.os.Bundle;
 import android.os.Handler;
+import android.os.Message;
 import android.util.Log;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -16,32 +19,52 @@ import java.util.regex.Pattern;
 public class ScanMusicFile {
     private static final String TAG = "ScanMusicFile";
     private static final Pattern mPattern = Pattern.compile("([^\\.]*)\\.([^\\.]*)");
-    private ExecutorService service = Executors.newFixedThreadPool(128);
-    private ConcurrentHashMap<String, String> filterFiles_music = new ConcurrentHashMap<String, String>(1024);
-    private final AtomicLong counter = new AtomicLong();
-    private long startTime;
+    private ExecutorService mService = Executors.newFixedThreadPool(128);
+    private ConcurrentHashMap<String, String> mAllMusic = new ConcurrentHashMap<String, String>(128);
+    private final AtomicLong mTaskCounter = new AtomicLong();
+    private final AtomicLong mFileCounter = new AtomicLong();
+    private long mStartTime;
+
+    private static final String filterDirs = "dcim,extracted,documents,lost.dir,screenshot,"
+            + "shootme,vpn,system,sysdata,sohu,tencent,wandoujia,taobao,sina,pictures,"
+            + "netease,jingdong,mishop,immomo,duokan,dccache,didi,"
+            + "baidumap,baidunavisdk,"
+            + "miui,xiami,image,images,miliao,logs,cacheimages,apk,video,tempvideo,"
+            + "wallpaper,imagecache,imagescache,amap,alipay,ringtones,youku,iqiyi,"
+            + "libs,soufun,wuba,msc,youdao,jdim,icbc,ctrip,cmb,autohomemain,"
+            + "autonvi,gkoudai,haodou,harvestfund,jtyh,lufax,meituanwaimai,wmlogger,"
+            + "mtklog,aliyun,sdk,videocache,ripple,iamge_cache,netlog,qiyivideo,"
+            + "tianqitong,36kr";
 
     private void scanDir(final String path) {
-        counter.incrementAndGet();
-        service.execute(new Runnable() {
+        mTaskCounter.incrementAndGet();
+        mService.execute(new Runnable() {
             @Override
             public void run() {
+//                Log.i(TAG, "path =" + path);
                 scanFile(path);
             }
         });
+    }
+
+    private synchronized boolean pass(String str) {
+        boolean result = !filterDirs.contains(str);
+        return result;
     }
 
     private void scanFile(final String path) {
         try {
             File file = new File(path);
             if (file.isDirectory()) {
-                File[] fileList = file.listFiles();
-                if (fileList != null) {
-                    for (File currFile : fileList) {
-                        if (currFile.isFile()) {
-                            checkFile(currFile);
-                        } else {
-                            scanDir(currFile.getAbsolutePath());
+                if(pass(file.getName().toLowerCase())) {
+                    File[] fileList = file.listFiles();
+                    if (fileList != null) {
+                        for (File currFile : fileList) {
+                            if (currFile.isFile()) {
+                                checkFile(currFile);
+                            } else {
+                                scanDir(currFile.getAbsolutePath());
+                            }
                         }
                     }
                 }
@@ -51,16 +74,17 @@ public class ScanMusicFile {
         } catch (Exception ex) {
             ex.printStackTrace();
         } finally {
-            counter.decrementAndGet();
+            mTaskCounter.decrementAndGet();
         }
     }
 
     private void checkFile(File file) {
+        mFileCounter.incrementAndGet();
         Matcher matcher = mPattern.matcher(file.getName());
-        if(matcher.matches()) {
+        if (matcher.matches()) {
             String fileExtension = matcher.group(2);
-            if(isMusic(fileExtension)) {
-                filterFiles_music.put(file.getName(), file.getAbsolutePath());
+            if (isMusic(fileExtension)) {
+                mAllMusic.put(file.getName(), file.getAbsolutePath());
             }
         }
     }
@@ -70,32 +94,37 @@ public class ScanMusicFile {
             return false;
         }
         final String ext = extension.toLowerCase();
-        if (ext.equals("mp3") || ext.equals("wav") || ext.equals("3gp") || ext.equals("ota") ||
-                ext.equals("aac") || ext.equals("mid") || ext.equals("midi") || ext.equals("ogg") ||
-                ext.equals("wma") || ext.equals("ra") || ext.equals("mka") || ext.equals("mkv") ||
-                ext.equals("m4a") || ext.equals("flac") || ext.equals(".rtx")) {
+        if (ext.equals("mp3") || ext.equals("wav") || ext.equals("3gp") || ext.equals("wma") || ext.equals("flac")) {
             return true;
         }
         return false;
     }
 
-    public void startScan(String path, Handler handler) {
-        startTime = System.currentTimeMillis();
+    public void startScan(ArrayList<String> paths, Handler handler) {
+        mStartTime = System.currentTimeMillis();
         try {
-            scanDir(path);
-            while (counter.get() > 0) {
+            for (String path : paths) {
+                scanDir(path);
+            }
+            while (mTaskCounter.get() > 0) {
                 Thread.sleep(100);
             }
 
-            Log.i(TAG, "end >>>>>>>>");
-            Log.i(TAG, "cost time >>>>>>>>" + (System.currentTimeMillis() - startTime)/ 1000.0 + " sed");
-            Log.i(TAG, "scan file count = " + filterFiles_music.size());
-
-            handler.sendEmptyMessage(1);
+            String costTime = "cost time >>>>>>>>" + (System.currentTimeMillis() - mStartTime) / 1000.0 + " sed";
+            String scanCount = "scan file count = " + mFileCounter.get();
+            String musicCount = "music count = " + mAllMusic.size();
+            Log.i(TAG, costTime);
+            Log.i(TAG, scanCount);
+            Message msg = Message.obtain();
+            Bundle data = new Bundle();
+            data.putString("msg", costTime + "\n" + scanCount + "\n" + musicCount);
+            data.putSerializable("music", mAllMusic);
+            msg.setData(data);
+            handler.sendMessage(msg);
         } catch (Exception ex) {
             ex.printStackTrace();
         } finally {
-            service.shutdown();
+            mService.shutdown();
         }
     }
 
